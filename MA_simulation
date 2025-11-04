@@ -1,0 +1,39 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima_process import ArmaProcess
+from statsmodels.tsa.arima.model import ARIMA
+
+#Szimuláció paraméterei
+np.random.seed(42)
+theta_1 = 0.7
+n = 100
+
+#MA(1) folyamat definiálása (AR = [1], MA = [1, theta_1])
+ma_process = ArmaProcess(ar=[1], ma=[1, theta_1])
+ma_data = ma_process.generate_sample(nsample=n)
+
+
+from statsmodels.graphics.tsaplots import plot_acf
+
+plot_acf(ma_data, lags=20)
+plt.title("ACF – szimulált MA(1) idősor")
+plt.show()
+
+#Idősor ábrázolása
+plt.figure(figsize=(10, 4))
+plt.plot(ma_data, label='MA(1) szimulált adat')
+plt.title('Szimulált MA(1) idősor')
+plt.xlabel('Idő')
+plt.ylabel('Érték')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+#MA(1) modell illesztése
+model = ARIMA(ma_data, order=(0, 0, 1))
+result = model.fit()
+print(result.summary())
+
+#A becsült theta_1 érték kiírása
+theta_hat = result.params[1]
+print(f"Becsült θ₁: {theta_hat:.4f} (valós: 0.7)")

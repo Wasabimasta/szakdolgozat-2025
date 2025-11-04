@@ -1,0 +1,875 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.seasonal import seasonal_decompose
+from sklearn.metrics import mean_squared_error
+import pywt
+from math import sqrt
+from statsmodels.stats.diagnostic import acorr_ljungbox
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from sklearn.preprocessing import StandardScaler
+import pandas_datareader.data as web
+from datetime import datetime
+from pmdarima import auto_arima
+import seaborn as sns
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.simplefilter(action='ignore', category=UserWarning)
+
+
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+
+def naive_forecasting(output_data):
+    # Naïve Persistence Forecast: Predict next step as the last observed value
+    predictions = output_data['Price'].shift(1).dropna()
+
+    # Align actual test values with predictions
+    actual_values = output_data['Price'].iloc[1:]  # Drop first value to match indices
+
+    # Compute Residuals
+    residuals = actual_values.values - predictions.values
+
+    # Compute RMSE
+    rmse = np.sqrt(mean_squared_error(actual_values, predictions))
+    print(f"Naïve Persistence Model RMSE: {rmse:.4f}")
+
+    # Ljung-Box Test
+    ljung_box_result = acorr_ljungbox(residuals, lags=[10], return_df=True)
+    print("\nLjung-Box Test Results:")
+    print(ljung_box_result)
+
+    # Plot Predictions vs Actual Values
+    plt.figure(figsize=(12, 6))
+    plt.plot(actual_values.index, actual_values, label='Actual Values', color='blue')
+    plt.plot(predictions.index, predictions, label='Naïve Predictions', color='red', linestyle='--')
+    plt.title('Naïve Forecasting: Predictions vs Actual Values')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # Plot Residuals
+    plt.figure(figsize=(10, 6))
+    plt.plot(residuals, label='Residuals', color='purple')
+    plt.axhline(y=0, color='gray', linestyle='--')
+    plt.title('Residuals of Naïve Forecast Model')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Residual Value')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    return "Done"
+def walk_forward_sarima(output_data, train_size):
+     
+    # Use your original dataset
+    
+    X = output_data['Price'].values
+    
+    train, test = X[0:train_size], X[train_size:len(X)]
+    history = [x for x in train]
+    predictions = []
+    
+    # Walk-forward validation
+    for t in range(len(test)):
+        
+        model = SARIMAX(history, order=(3, 1, 2), seasonal_order=(6, 1, 1, 12)) #,seasonal_order=(6,1,1,12)
+        model_fit = model.fit()
+        output = model_fit.forecast()
+        yhat = output[0]
+        predictions.append(yhat)
+        obs = test[t]
+        history.append(obs)
+        print('predicted=%f, expected=%f' % (yhat, obs))
+
+    # Evaluate forecasts
+    rmse = sqrt(mean_squared_error(test, predictions))
+    print('Test RMSE: %.3f' % rmse)
+
+
+
+    # Plot setup
+    plt.figure(figsize=(10, 6))
+
+    # Plot test data
+    plt.plot(test, label='Test Data', color='blue')
+
+    # Plot in-sample predictions
+    plt.plot(predictions, label='In-sample Predictions', color='red')
+
+    # Add legend and labels
+    plt.legend()
+    plt.title('ARIMA Model Predictions with Forecast Range and Future Forecast')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Price')
+    plt.show()
+
+    # Calculate residuals
+
+    residuals = [test[i] - predictions[i] for i in range(len(test))]
+    ljung_box_result = acorr_ljungbox(residuals, lags=[10], return_df=True)
+
+    print("\nLjung-Box Test Results:")
+    print(ljung_box_result)
+    # Plot residuals
+    plt.figure(figsize=(10, 6))
+    plt.plot(residuals, label='Residuals', color='purple')
+    plt.axhline(y=0, color='gray', linestyle='--')
+    plt.title('Residuals of ARIMA Model Predictions')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Residual Value')
+    plt.legend()
+    plt.show()
+
+    return "Plotting complete"
+def mean_absolute_percentage_error(y_true, y_pred):
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    # Avoid division by zero
+    mask = y_true != 0
+    return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
+
+def walk_forward_arima(output_data, train_size):
+     
+    # Use your original dataset
+    
+    X = output_data['Price'].values
+    
+    train, test = X[0:train_size], X[train_size:len(X)]
+    history = [x for x in train]
+    predictions = []
+    
+    # Walk-forward validation
+    for t in range(len(test)):
+        model = ARIMA(history, order=(1, 1, 8)) #,seasonal_order=(6,1,1,12)
+        model_fit = model.fit()
+        output = model_fit.forecast()
+        yhat = output[0]
+        predictions.append(yhat)
+        obs = test[t]
+        history.append(obs)
+        print('predicted=%f, expected=%f' % (yhat, obs))
+
+    # Evaluate forecasts
+    rmse = sqrt(mean_squared_error(test, predictions))
+    print('Test RMSE: %.3f' % rmse)
+
+
+
+    # Plot setup
+    plt.figure(figsize=(10, 6))
+
+    # Plot test data
+    plt.plot(test, label='Test Data', color='blue')
+
+    # Plot in-sample predictions
+    plt.plot(predictions, label='In-sample Predictions', color='red')
+
+    # Add legend and labels
+    plt.legend()
+    plt.title('ARIMA Model Predictions with Forecast Range and Future Forecast')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Price')
+    plt.show()
+
+    # Calculate residuals
+
+    residuals = [test[i] - predictions[i] for i in range(len(test))]
+    ljung_box_result = acorr_ljungbox(residuals, lags=[10], return_df=True)
+
+    print("\nLjung-Box Test Results:")
+    print(ljung_box_result)
+    # Plot residuals
+    plt.figure(figsize=(10, 6))
+    plt.plot(residuals, label='Residuals', color='purple')
+    plt.axhline(y=0, color='gray', linestyle='--')
+    plt.title('Residuals of ARIMA Model Predictions')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Residual Value')
+    plt.legend()
+    plt.show()
+
+    return "Plotting complete"
+
+def swt_wavelet_walk_forward_validation(output_data, train_size):
+    # Initialize Walk-Forward RMSE Tracker and Forecast Collector
+    rmse_scores = []
+    all_forecasts = []  # Store cumulative forecasts
+    residuals = []
+    # Walk-Forward Loop
+    for i in range(train_size, len(X) ):  # One-step ahead prediction
+        # Split train dynamically
+        A3_train = A3[:i]
+        D3_train = D3[:i]
+        D2_train = D2[:i]
+        D1_train = D1[:i]
+
+        # Train Models
+        model_A3 = SARIMAX(A3_train, order=(20, 3, 0), seasonal_order=(0, 0, 2, 12), initialization='approximate_diffuse').fit()
+        model_D3 = SARIMAX(D3_train, order=(4, 0, 1), seasonal_order=(0, 0, 2, 12), initialization='approximate_diffuse').fit()
+        model_D2 = SARIMAX(D2_train, order=(5, 0, 0), seasonal_order=(2, 0, 0, 12), initialization='approximate_diffuse').fit()
+        model_D1 = SARIMAX(D1_train, order=(5, 0, 1), seasonal_order=(0, 0, 0, 12), initialization='approximate_diffuse').fit()
+
+        # Forecast one step ahead
+        A3_forecast = model_A3.predict(start=i, end=i)
+        D3_forecast = model_D3.predict(start=i, end=i)
+        D2_forecast = model_D2.predict(start=i, end=i)
+        D1_forecast = model_D1.predict(start=i, end=i)
+
+        # Combine Forecasted Coefficients
+        forecasted_coeffs = [A3_forecast, D3_forecast, D2_forecast, D1_forecast]
+
+        # Inverse MRA to reconstruct the original signal
+        forecasted_signal = pywt.imra(forecasted_coeffs)
+
+        # Store Forecast
+        all_forecasts.append(forecasted_signal[0])  # Append one step
+
+        # Calculate RMSE for this step
+        true_value = X[i]  # Single point comparison
+        rmse = np.sqrt(mean_squared_error([true_value], [forecasted_signal[0]]))
+        rmse_scores.append(rmse)
+        residuals.append(true_value - forecasted_signal[0])
+
+
+    # Calculate Final RMSE
+    final_rmse = np.mean(rmse_scores)
+    print(f"Final Walk-Forward RMSE: {final_rmse}")
+     # Ljung-Box Test
+    ljung_box_result = acorr_ljungbox(residuals, lags=[10], return_df=True)
+    print("\nLjung-Box Test Results:")
+    print(ljung_box_result)
+    # Plot Results
+    plt.figure(figsize=(12, 6))
+    plt.plot(X, label='Original Data')
+    plt.plot(np.arange(train_size, len(X)), all_forecasts, label='Wavelet Forecast (1-Step)', color='red')
+    plt.legend()
+    plt.title("Wavelet-Based Forecasting with Walk-Forward Validation (1-Step Ahead)")
+    plt.show()
+
+    # Plot test data
+    plt.plot(X[train_size:], label='Test Data', color='blue')
+
+    # Plot in-sample predictions
+    plt.plot(all_forecasts, label='In-sample Predictions', color='red')
+
+    # Plot Residuals
+    plt.figure(figsize=(10, 6))
+    plt.plot(residuals, label='Residuals', color='purple')
+    plt.axhline(y=0, color='gray', linestyle='--')
+    plt.title('Residuals of Wavelet Forecast Model Predictions')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Residual Value')
+    plt.legend()
+    plt.show()
+    return "Wavelet walk forward validation done"
+
+
+def swt_wavelet_walk_forward_validation_exog(output_data, train_size, exog_columns):
+
+    # Initialize Walk-Forward RMSE Tracker and Forecast Collector
+    rmse_scores = []
+    all_forecasts = []  # Store cumulative forecasts
+    residuals = []
+    
+   #Itt pedig kell az hogy minden i-nél hozzáadjuk az eredeti skálázott értékeket!
+    # 1. Extract exogenous variables
+    original_array = extreme_weather_streak_monthly[exog_columns].copy()
+
+    # 2. First cumulative sum
+    first_cumsum = np.cumsum(original_array.to_numpy(), axis=0)
+
+    # 3. Fit scaler on full cumulative series
+    scaler = StandardScaler()
+    scaled_cumsum = scaler.fit_transform(first_cumsum)
+
+    # 4. Convert back to DataFrame with proper indexing/column names
+    exog_standardized_df_full = pd.DataFrame(
+        scaled_cumsum,
+        columns=exog_columns,
+        index=original_array.index
+    )
+    
+    # Walk-Forward Loop
+    for i in range(train_size, len(X)-6):  # One-step ahead prediction
+        # Split train dynamically
+        A3_train = A3[:i]
+        D3_train = D3[:i]
+        D2_train = D2[:i]
+        D1_train = D1[:i]
+        exog_standardized_df_full_train = exog_standardized_df_full[:i]
+
+
+        model_A3_exog = SARIMAX(A3_train, order=(10, 1, 4), seasonal_order=(0, 0, 2, 12), initialization='approximate_diffuse',exog=exog_standardized_df_full_train[exog_columns]).fit()
+        model_D3 = SARIMAX(D3_train, order=(4, 0, 1), seasonal_order=(0, 0, 2, 12), initialization='approximate_diffuse').fit()
+        model_D2 = SARIMAX(D2_train, order=(5, 0, 0), seasonal_order=(2, 0, 0, 12), initialization='approximate_diffuse').fit()
+        model_D1 = SARIMAX(D1_train, order=(5, 0, 1), seasonal_order=(0, 0, 0, 12), initialization='approximate_diffuse').fit()
+
+        #future exog values
+
+        # Forecast one step ahead
+        A3_forecast = model_A3_exog.predict(start=i, end=i, exog=exog_standardized_df_full[exog_columns][i:i+1])  
+        D3_forecast = model_D3.predict(start=i, end=i)
+        D2_forecast = model_D2.predict(start=i, end=i)
+        D1_forecast = model_D1.predict(start=i, end=i)
+
+        # Combine Forecasted Coefficients
+        forecasted_coeffs = [A3_forecast, D3_forecast, D2_forecast, D1_forecast]
+
+        # Inverse MRA to reconstruct the original signal
+        forecasted_signal = pywt.imra(forecasted_coeffs)
+        print(forecasted_signal)
+        print(type(forecasted_signal))
+          # Extract the first element
+        # Store Forecast
+        all_forecasts.append(forecasted_signal)  # Append one step
+
+        # Calculate RMSE for this step
+        true_value = X[i]  # Single point comparison
+        rmse = np.sqrt(mean_squared_error([true_value], [forecasted_signal]))
+        rmse_scores.append(rmse)
+        residuals.append(true_value - forecasted_signal)
+        print(f"Step {i}, True Value: {true_value}, Forecasted Value: {forecasted_signal}, RMSE: {rmse}")
+
+    all_forecasts = np.array(all_forecasts)
+    # Calculate Final RMSE
+    final_rmse = np.mean(rmse_scores)
+    print(f"Final Walk-Forward RMSE: {final_rmse}")
+     # Ljung-Box Test
+    ljung_box_result = acorr_ljungbox(residuals, lags=[10], return_df=True)
+    print("\nLjung-Box Test Results:")
+    print(ljung_box_result)
+    # Plot Results
+    plt.figure(figsize=(12, 6))
+    plt.plot(X[:-6], label='Original Data')
+
+    plt.plot(np.arange(train_size, train_size + len(all_forecasts)), all_forecasts.ravel(), label='Wavelet Forecast (1-Step)', color='red')
+    plt.legend()
+    plt.title("Wavelet-Based Forecasting with Walk-Forward Validation (1-Step Ahead)")
+    plt.show()
+
+    # Plot test data
+    plt.plot(X[train_size:], label='Test Data', color='blue')
+
+    # Plot in-sample predictions
+    plt.plot(all_forecasts, label='In-sample Predictions', color='red')
+
+    # Plot Residuals
+    plt.figure(figsize=(10, 6))
+    plt.plot(residuals, label='Residuals', color='purple')
+    plt.axhline(y=0, color='gray', linestyle='--')
+    plt.title('Residuals of Wavelet Forecast Model Predictions')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Residual Value')
+    plt.legend()
+    plt.show()
+    return "Wavelet walk forward validation done"
+
+
+def adf_test(series, label):
+    result = adfuller(series)
+    print(f'ADF Test for {label}')
+    print(f'ADF Statistic: {result[0]:.6f}')
+    print(f'p-value: {result[1]:.6f}')
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print(f'\t{key}: {value:.3f}')
+    print('-' * 40)
+
+def evaluate_model(model, train, test, forecast, label):
+    # AIC
+    print(f"{label} AIC: {model.aic:.2f}")
+    
+    # RMSE
+    rmse = np.sqrt(mean_squared_error(test[:len(forecast)], forecast))
+    print(f"{label} RMSE: {rmse:.4f}")
+    
+    # Ljung-Box Test (residual independence check)
+    residuals = test[:len(forecast)] - forecast
+    ljung_box_result = acorr_ljungbox(residuals, lags=[10], return_df=True)
+    print(f"\n{label} Ljung-Box Test Results:")
+    print(ljung_box_result)
+    print('-' * 40)
+
+
+def plot_autocorrelations(A3, D3, D2, D1):
+    plot_acf(A3, lags=100, title="A3 Autocorrelation function")
+    plot_pacf(A3, lags=100, method='ywm', title="A3 Partial Autocorrelation")
+
+    plot_acf(D3, lags=100, title="D3 Autocorrelation function")
+    plot_pacf(D3, lags=100, method='ywm', title="D3 Partial Autocorrelation")
+
+    plot_acf(D2, lags=100, title="D2 Autocorrelation function")
+    plot_pacf(D2, lags=100, method='ywm', title="D2 Partial Autocorrelation")
+
+
+    plot_acf(D1, lags=100, title="D1 Autocorrelation function")
+    plot_pacf(D1, lags=100, method='ywm', title="D1 Partial Autocorrelation")
+    plt.show()
+
+#Creating a custom everything to test data from 2000 to 2024.03.01
+#load weather data
+weather_data = pd.read_excel(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\yearly_extreme_weather_per_month.xlsx")
+output_data = pd.read_csv(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\Orange_Juice_Futures_Historical_Data_monthly_1973_2025.csv")
+extreme_weather_streak_monthly = pd.read_excel(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\annaul_monthly_extreme_weather_streaks(rain,temp).xlsx")
+#VERY IMPORTANT - MONTHLY BRAZIL ORANGE JUICE EXPORTS TO THE USA
+brazil_full_export_usa = pd.read_excel(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\brazil_export_to_usa_97-25.xlsx")
+
+output_data['Date'] = pd.to_datetime(output_data['Date'])
+output_data = output_data[(output_data['Date'].dt.year >= 2000)]
+output_data.reset_index(drop=True, inplace=True)
+
+
+
+# Feltételezzük, hogy output_data['Price'] havi gyakoriságú idősor, datetime indexszel
+s = 12  # szezonhossz: 12 hónap (éves ciklus)
+
+# Szezonális differenciálás: X_t - X_{t-12}
+seasonal_diff = output_data['Price'].diff(periods=s)
+result = adfuller(seasonal_diff.dropna())
+print(f"ADF stat: {result[0]}, p-value: {result[1]}")
+# Ábrázolás
+plt.figure(figsize=(12, 5))
+
+plt.subplot(1, 2, 1)
+plt.plot(output_data['Price'], label='Eredeti árfolyam')
+plt.title('Eredeti idősort')
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(seasonal_diff, label='Szezonálisan differenciált árfolyam', color='orange')
+plt.title('Szezonálisan differenciált sor (s = 12)')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+
+'''''
+# Eredeti és differenciált sor
+price = output_data['Price']
+price_diff = price.diff().dropna()
+
+# ADF teszt eredeti sorra
+adf_original = adfuller(price.dropna())
+# ADF teszt differenciált sorra
+adf_diff = adfuller(price_diff)
+
+# Plot
+fig, axs = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+
+axs[0].plot(price, label='Eredeti idősor', color='steelblue')
+axs[0].set_title(f"ADF statisztika értéke: {adf_original[0]:.3f}, p-érték: {adf_original[1]:.3f}")
+axs[0].legend()
+
+axs[1].plot(price_diff, label='Differenciált idősor', color='darkorange')
+axs[1].set_title(f"ADF statisztika értéke: {adf_diff[0]:.3f}, p-érték: {adf_diff[1]:.3f}")
+axs[1].legend()
+
+plt.tight_layout()
+plt.show()
+'''''
+
+
+extreme_weather_streak_monthly['extrem_idojaras_36_rolling_sum'] = extreme_weather_streak_monthly['total_extreme_streaks'].rolling(window=36, min_periods=0).sum()  #FIRST EREDMÉNY: 12, 8-nál is jó értékek jönnek ki, régebbi adatokon 0.6 is.
+extreme_weather_streak_monthly = extreme_weather_streak_monthly[36:]
+ # Az első 3 év extrém időjárás összeadás miatt 1997-től kezdődik az adatbázism emiatt ezt ki kell vonnom
+extreme_weather_streak_monthly = extreme_weather_streak_monthly.reset_index(drop=True)
+
+
+
+
+
+#------------------------------------------------------------------------------------------------
+
+
+brazil_exp_window = 12 #
+brazil_full_export_usa['rolling_sum_of_deliveries'] = (brazil_full_export_usa['KG_LIQUIDO']/1000000).rolling(window=brazil_exp_window, min_periods=0).sum()
+# Data and Decomposition
+extreme_weather_streak_monthly = extreme_weather_streak_monthly[extreme_weather_streak_monthly['year'] <2024]
+output_data = output_data[(output_data['Date'].dt.year >= 2000) & (output_data['Date'].dt.year < 2024)] 
+brazil_full_export_usa = brazil_full_export_usa[(brazil_full_export_usa['CO_ANO']>=2000) & (brazil_full_export_usa['CO_ANO']<2024)]
+
+brazil_full_export_usa['date'] = pd.to_datetime({
+    'year': brazil_full_export_usa['CO_ANO'],
+    'month': brazil_full_export_usa['CO_MES'],
+    'day': 1  # First day of the month
+})
+
+
+
+level = 3
+X = output_data['Price'].values 
+
+
+#8-cal oszthatóság ellenőrzése (wavelet dekompozíció miatt)
+
+if len(X) % 8 != 0:
+    #Amennyiben nem, 8-cal oszthatóvá kell tenni az eredeti idősort
+    adjustment = 8 - (len(X) % 8)
+    X = X[adjustment:]
+
+# MRA Dekompozíció
+
+coeffs = pywt.mra(X, 'db4', level=level, transform= 'swt') 
+
+
+def wrcoef(X, coef_type, coeffs, wavename, level):
+    """ Modified wrcoef for MRA structure """
+    if coef_type == 'a':
+        return coeffs[0]  # MRA approximation is the first element
+    elif coef_type == 'd':
+        return coeffs[level]  # MRA detail coefficients are the remaining elements
+    else:
+        raise ValueError("Invalid coefficient type: {}".format(coef_type))
+
+
+
+A3 = wrcoef(X, 'a', coeffs, 'db4', 3)
+#np.save(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\A3_wavelet_2000-2024.npy", A3)
+D3 = wrcoef(X, 'd', coeffs, 'db4', 3)
+#np.save(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\D3_wavelet_2000-2024.npy", D3)
+D2 = wrcoef(X, 'd', coeffs, 'db4', 2)
+#np.save(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\D2_wavelet_2000-2024.npy", D2)
+D1 = wrcoef(X, 'd', coeffs, 'db4', 1)
+#np.save(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\D1_wavelet_2000-2024.npy", D1)
+
+full_prediction_results = pd.DataFrame(columns=['train_size', 'forecast_horizon', 'Model', 'RMSE', 'MAPE'])
+
+print(full_prediction_results)
+
+plot_pacf(D1, lags=20, method='ywm', title="D1 komponens Parciális Autokorrelációs függvénye")
+plot_pacf(D3, lags=20, method='ywm', title="D3 komponens Parciális Autokorrelációs függvénye")
+plt.show()
+
+
+
+results_rows = []
+for horizon in range (1,13):
+    horizon = 12
+    for train_size_iteration in [0.9]:
+        
+        forecast_horizon = horizon
+        train_size = int(len(A3) * train_size_iteration) 
+        train, test = X[:train_size], X[train_size:]
+
+        A3_train = A3[:train_size]
+        D3_train = D3[:train_size]
+        D2_train = D2[:train_size]
+        D1_train = D1[:train_size]
+
+
+        brazil_full_export_usa['KG_LIQUIDO'] = brazil_full_export_usa['KG_LIQUIDO']/100000
+        brazil_full_export_usa.reset_index(inplace=True, drop=True)
+
+
+        extreme_weather_streak_monthly['brazil_import_12_rolling_sum'] = brazil_full_export_usa['rolling_sum_of_deliveries']
+        exog_columns = ['extrem_idojaras_36_rolling_sum','brazil_import_12_rolling_sum'] #, 'extreme_weather_lag12','extreme_weather_lag3'
+
+
+        original_array = extreme_weather_streak_monthly[exog_columns]
+        exog_df = pd.DataFrame(index=original_array.index[:train_size], columns=original_array.columns)
+        exog_future_df = pd.DataFrame(index=original_array.index[train_size:], columns=original_array.columns)
+        try:
+            #Dekompozíció és előrejelzés minden exog változóra külön-külön
+            def multilevel_exog_forecasting(exog_df, exog_variables, train_size, forecast_horizon):
+                
+                remainder = len(exog_df[:train_size]) % 8
+                # Calculate the amount to add
+                amount_to_add = 8 - remainder if remainder != 0 else 0
+
+                exog_process = exog_df.copy()
+                exog_process.iloc[train_size+amount_to_add+1:] = ''  
+
+                for exog_variable in exog_variables:
+
+                    X = exog_process[exog_variable][:train_size+amount_to_add].values 
+                    coeffs = pywt.mra(X, 'db4', level=3, transform= 'swt') 
+                    A3_exog = wrcoef(X, 'a', coeffs, 'db4', 3)
+
+                    D3_exog = wrcoef(X, 'd', coeffs, 'db4', 3)
+
+                    D2_exog = wrcoef(X, 'd', coeffs, 'db4', 2)
+
+                    D1_exog = wrcoef(X, 'd', coeffs, 'db4', 1)
+                    '''''
+                    # Plotting
+                    plt.figure(figsize=(14, 10))
+                    plt.suptitle(f"{exog_variable} Multilevel Wavelet Decomposition (db4, level=3)", fontsize=16, weight='bold')
+
+                    plt.subplot(5, 1, 1)
+                    plt.plot(X, color='black')
+                    plt.title("Original Signal", fontsize=12)
+                    plt.grid(True)
+
+                    plt.subplot(5, 1, 2)
+                    plt.plot(A3_exog, color='blue')
+                    plt.title("Approximation A3 (Low Frequency)", fontsize=12)
+                    plt.grid(True)
+
+                    plt.subplot(5, 1, 3)
+                    plt.plot(D3_exog, color='orange')
+                    plt.title("Detail D3 (Mid Frequency)", fontsize=12)
+                    plt.grid(True)
+
+                    plt.subplot(5, 1, 4)
+                    plt.plot(D2_exog, color='green')
+                    plt.title("Detail D2", fontsize=12)
+                    plt.grid(True)
+
+                    plt.subplot(5, 1, 5)
+                    plt.plot(D1_exog, color='red')
+                    plt.title("Detail D1 (High Frequency)", fontsize=12)
+                    plt.grid(True)
+
+                    plt.tight_layout(rect=[0, 0, 1, 0.96])
+                    plt.show()
+                    '''''
+                    #plot_autocorrelations(A3_exog, D3_exog, D2_exog, D1_exog)
+                    # Mindegyik komponensre előrejelzést alkotunk
+                    individual_forecasts = {}
+                    forecasted_coeffs = []
+                    for i in range(len(coeffs)):
+                        name = 'A' + str(level) if i == 0 else f'D{level - i + 1}'
+                        component_train = coeffs[i][:train_size]
+
+                        model = auto_arima(component_train,
+                                            seasonal=False,
+                                            start_p=1, start_q=1,
+                                            max_p=10, max_q=10,
+                                            stepwise=True,
+                                            error_action='ignore',
+                                            suppress_warnings=True)
+                        forecast = model.predict(n_periods=forecast_horizon)
+                        forecasted_coeffs.append(forecast)
+                        individual_forecasts[name] = forecast
+                        
+
+                    # Újraépítjük az előrejelzett komponensekből az eredeti jelet
+                    forecasted_signal = pywt.imra(forecasted_coeffs)
+                    exog_process[exog_variable][train_size:train_size + forecast_horizon] = forecasted_signal
+                    #Ábrázoláshoz határozunk meg egy időtengelyt.
+                    time_axis = exog_df.index[train_size:train_size + forecast_horizon]
+                    '''''
+                    # Actual vs Forecasted comparison
+                    plt.figure(figsize=(12, 6))
+                    plt.plot(time_axis, exog_df.iloc[train_size:train_size + forecast_horizon, 0], label='Actual Exog Variable', marker='o')
+                    plt.plot(time_axis, forecasted_signal, label='Forecasted (Wavelet Reconstructed)', marker='x')
+                    plt.title(f'{exog_variable} Variable Forecast vs Actual')
+                    plt.xlabel('Time')
+                    plt.ylabel('Value')
+                    plt.legend()
+                    plt.grid(True)
+                    plt.tight_layout()
+                    plt.show()
+                    '''''
+                return exog_process
+
+
+
+            
+            original_array = extreme_weather_streak_monthly[exog_columns]
+            original_array = multilevel_exog_forecasting(original_array, exog_columns, train_size, forecast_horizon)
+
+            Y_train = original_array[:train_size].to_numpy()
+            first_cumsum_train = np.cumsum(Y_train, axis=0)
+            last_cumsum_train = first_cumsum_train[-1]
+
+ 
+            Y_future = original_array[train_size:train_size + forecast_horizon].to_numpy()
+            cumulative_future = last_cumsum_train + np.cumsum(Y_future, axis=0)
+
+ 
+            combined_cumsum = np.vstack([first_cumsum_train, cumulative_future])
+
+ 
+            scaler = StandardScaler()
+            scaler.fit(combined_cumsum)
+
+ 
+            exog_standardized_df_train = pd.DataFrame(
+                scaler.transform(first_cumsum_train),
+                columns=exog_columns,
+                index=original_array.index[:train_size]
+            )
+
+            future_exog_standardized_df = pd.DataFrame(
+                scaler.transform(cumulative_future),
+                columns=exog_columns,
+                index=original_array.index[train_size:train_size + forecast_horizon]
+            )
+
+            A3_exog_columns = ['extrem_idojaras_36_rolling_sum','brazil_import_12_rolling_sum']
+
+
+            #future_exog_standardized_df[exog_columns].head(12).plot(title="Future Exogenous Inputs")
+
+
+
+            exog_data = extreme_weather_streak_monthly[exog_columns]
+
+            #-------------------------------------WALK FORWARD VALIDATION--------------------------------------------------
+            #swt_wavelet_walk_forward_validation(output_data, train_size)
+            #swt_wavelet_walk_forward_validation_exog(output_data, train_size, exog_columns)
+            #walk_forward_arima(output_data, train_size)
+            #walk_forward_sarima(output_data, train_size)
+            #naive_forecasting(output_data)
+
+            #------------------------------------MODEL TRAINING-------------------------------------------------------------
+
+
+
+            model_A3_exog = SARIMAX(A3_train, order=(10, 1, 4), seasonal_order=(0, 0, 2, 12), exog=exog_standardized_df_train[A3_exog_columns],
+                initialization='approximate_diffuse', disp=False).fit() # exog=weather_data[['extreme_spring']][:train_size]  #, exog=df[['total_extreme_seasons']][:train_size-1]
+
+
+
+            #plt.plot(extreme_weather_streak_monthly['extrem_idojaras_36_rolling_sum'])
+            #plt.plot(extreme_weather_streak_monthly['brazil_import_12_rolling_sum'])
+            #plt.plot(A3_train)
+            #plt.show()
+
+
+            model_A3 = SARIMAX(A3_train, order=(10, 1, 4), seasonal_order=(0, 0, 2, 12), disp=False).fit()
+
+            model_D3 = SARIMAX(D3_train[:-2], order=(4, 0, 1), seasonal_order=(0, 0, 2, 12), disp=False, initialization='approximate_diffuse').fit()
+
+
+            model_D2 = SARIMAX(D2_train, order=(5, 0, 0), seasonal_order=(2, 0, 0, 12), disp=False).fit()
+            model_D1 = SARIMAX(D1_train, order=(5, 0, 1), seasonal_order=(0, 0, 0, 12), disp=False).fit()
+
+
+            #-------------------------------------------------FORECASTING-------------------------------------------------------------------
+
+            A3_exog_forecast = model_A3_exog.predict(start=len(A3_train), end=len(A3_train) + forecast_horizon - 1, exog=future_exog_standardized_df[A3_exog_columns][:forecast_horizon]) #,  , exog=future_exog[['extreme_spring']]
+
+            coefs = model_A3_exog.params[A3_exog_columns]
+
+            exog_contributions = future_exog_standardized_df[A3_exog_columns][:forecast_horizon] * coefs.values
+
+            fig, ax = plt.subplots(figsize=(12, 6))
+            exog_contributions.index = A3_exog_forecast.index
+
+            exog_contributions.plot(kind='bar', stacked=True, ax=ax, colormap='tab10')
+
+            '''''
+            ax.plot(A3_exog_forecast.index, A3_exog_forecast, color='black', marker='o', label='Forecast', linewidth=2)
+
+            ax.set_title("Einfluss der Exogenen Variablen auf die Vorhersage")
+            ax.set_ylabel("Beitrag zur Vorhersage")
+            ax.legend(loc='upper left')
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            plt.show()
+            ''''' 
+
+            A3_forecast =  model_A3.predict(start=len(A3_train), end=len(A3_train) + forecast_horizon - 1)
+            D3_forecast = model_D3.predict(start=len(D3_train), end=len(D3_train) + forecast_horizon - 1)
+            D2_forecast = model_D2.predict(start=len(D2_train), end=len(D2_train) + forecast_horizon - 1)
+            D1_forecast = model_D1.predict(start=len(D1_train), end=len(D1_train) + forecast_horizon - 1)
+
+
+            forecasted_coeffs_exog = [A3_exog_forecast, D3_forecast, D2_forecast, D1_forecast]
+            forecasted_coeffs = [A3_forecast, D3_forecast, D2_forecast, D1_forecast]
+
+            #Inverz MRA
+            wavelet_forecasted_signal_exog = pywt.imra(forecasted_coeffs_exog)
+            wavelet_forecasted_signal = pywt.imra(forecasted_coeffs)
+        
+        
+            '''''
+            print("EXOG WAVELET RMSE: ", wavelet_rmse_exog)
+            print("WAVELET RMSE: ", wavelet_rmse)
+            # Step 6: Plot Results
+            plt.figure(figsize=(12, 6))
+            plt.plot(X)
+            plt.plot(np.arange(len(A3_train), len(A3_train) + forecast_horizon), forecasted_signal_exog, label='Forecasted Data', color='red')
+            plt.plot(np.arange(len(A3_train), len(A3_train) + forecast_horizon), forecasted_signal, label='Forecasted Data', color='green')
+            plt.show()
+
+            '''
+            # Wavelet Model       
+
+            wavelet_rmse = np.sqrt(mean_squared_error(X[len(A3_train):len(A3_train)+forecast_horizon], wavelet_forecasted_signal))
+            wavelet_mape = mean_absolute_percentage_error(X[len(A3_train):len(A3_train)+forecast_horizon], wavelet_forecasted_signal)
+            # Wavelet Model EXOG
+
+            wavelet_exog_rmse = np.sqrt(mean_squared_error(X[train_size: train_size+forecast_horizon], wavelet_forecasted_signal_exog))
+            wavelet_exog_mape = mean_absolute_percentage_error(X[len(A3_train):len(A3_train)+forecast_horizon], wavelet_forecasted_signal_exog)
+            # ARIMA Model
+
+            arima_model = ARIMA(train, order=(1, 1, 8)).fit()
+            arima_forecast = arima_model.predict(start=len(A3_train), end=len(A3_train) + forecast_horizon - 1)
+            arima_rmse = np.sqrt(mean_squared_error(X[len(A3_train):len(A3_train)+forecast_horizon], arima_forecast))
+            arima_mape = mean_absolute_percentage_error(X[len(A3_train):len(A3_train)+forecast_horizon], arima_forecast)
+
+            # SARIMA Model
+            sarima_model = SARIMAX(train, order=(3,1,2), seasonal_order=(6,1,1,12), disp=False).fit()
+            sarima_forecast = sarima_model.predict(start=len(A3_train), end=len(A3_train) + forecast_horizon - 1)
+            sarima_rmse = np.sqrt(mean_squared_error(X[len(A3_train):len(A3_train)+forecast_horizon], sarima_forecast))
+            sarima_mape = mean_absolute_percentage_error(X[len(A3_train):len(A3_train)+forecast_horizon], sarima_forecast)
+
+            print("EXOG WAVELET RMSE: ", wavelet_exog_rmse)
+            print(f"Wavelet RMSE: {wavelet_rmse}")
+            print(f"SARIMA RMSE: {sarima_rmse}")
+            print(f"ARIMA RMSE: {arima_rmse}")
+            print(full_prediction_results)
+            # inside the loop, for each model:
+            results_rows.append({
+                'train_size': train_size,
+                'forecast_horizon': forecast_horizon,
+                'Model': 'ARIMA',
+                'RMSE': arima_rmse,
+                'MAPE': arima_mape
+            })
+
+            results_rows.append({
+                'train_size': train_size,
+                'forecast_horizon': forecast_horizon,
+                'Model': 'SARIMA',
+                'RMSE': sarima_rmse,
+                'MAPE': sarima_mape
+            })
+
+            results_rows.append({
+                'train_size': train_size,
+                'forecast_horizon': forecast_horizon,
+                'Model': 'Wavelet',
+                'RMSE': wavelet_rmse,
+                'MAPE': wavelet_mape
+            })
+            
+            results_rows.append({
+                'train_size': train_size,
+                'forecast_horizon': forecast_horizon,
+                'Model': 'Wavelet_exog',
+                'RMSE': wavelet_exog_rmse,
+                'MAPE': wavelet_exog_mape   
+            })
+
+
+            
+            #Eredmények ábrázolása
+            plt.figure(figsize=(12, 6))
+            plt.plot(X)
+            plt.plot(np.arange(len(A3_train), len(A3_train) + forecast_horizon), wavelet_forecasted_signal, label='Wavelet + SARIMA Predikció', color='red')
+            plt.plot(np.arange(len(A3_train), len(A3_train) + forecast_horizon), wavelet_forecasted_signal_exog, label='Wavelet + SARIMAX Predikció', color='blue')
+            plt.plot(np.arange(len(A3_train), len(A3_train) + forecast_horizon), arima_forecast, label='ARIMA Predikció', color='green')
+            plt.plot(np.arange(len(A3_train), len(A3_train) + forecast_horizon), sarima_forecast, label='SARIMA Predikció', color='yellow')
+            plt.legend()
+            plt.title("Wavelet + AutoARIMA Forecasting with pywt.imra")
+            plt.show()
+            
+        except Exception as e:
+            full_prediction_results = pd.DataFrame(results_rows)
+            print(f"Error in forecasting: {e}")
+            continue
+full_prediction_results = pd.DataFrame(results_rows)
+print(full_prediction_results)
+
+full_prediction_results.to_excel(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\full_prediction_results.xlsx", index=False)

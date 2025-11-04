@@ -1,0 +1,80 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.ar_model import AutoReg
+from statsmodels.graphics.tsaplots import plot_acf
+from pandas.plotting import autocorrelation_plot
+
+
+np.random.seed(25)
+
+
+n = 100
+data = np.cumsum(np.random.randn(n))  # Random walk process
+
+
+autocorrelation_plot(data)
+plt.show()
+plot_acf(data, lags=31)
+plt.show()
+
+
+def plot_series(series, title="Idősor adatunk"):
+    plt.figure(figsize=(10, 5))
+    plt.plot(series, label=title)
+    plt.legend()
+    plt.show()
+
+# Plot the generated data
+plot_series(data, "Generált idősor")
+
+train_size = len(data) // 2
+train, test = data[:train_size], data[train_size:]
+
+train_size = int(n * 0.8)
+train, test = data[:train_size], data[train_size:]
+
+from statsmodels.tsa.ar_model import AutoReg
+ar_model = AutoReg(train, lags=1).fit()
+
+phi_hat = ar_model.params[1]
+print(f"Estimated phi_1 (80% train): {phi_hat:.4f} (true value: 1.0)")
+print(stop)
+
+
+
+
+
+lag = 15  # Order of AR model
+ar_model = AutoReg(train, lags=lag).fit()
+
+print(ar_model.summary())
+ar_predictions = ar_model.predict(start=train_size, end=len(data)-1, dynamic=False)
+
+
+arma_model = ARIMA(train, order=(15, 0, 1)).fit()
+arma_predictions1 = arma_model.forecast(steps=len(test))
+
+
+arma_model2 = ARIMA(train, order=(15, 0, 2)).fit()
+arma_predictions2 = arma_model2.forecast(steps=len(test))
+
+arma_model3 = ARIMA(train, order=(15, 0, 3)).fit()
+arma_predictions3 = arma_model3.forecast(steps=len(test))
+
+arma_model4 = ARIMA(train, order=(15, 1, 3)).fit()
+arma_predictions3 = arma_model4.forecast(steps=len(test))
+print("arima summary", arma_model4.summary())
+
+
+plt.plot(data, label="Valós adat")
+plt.plot(range(train_size), train, label="Tanítási adat")
+plt.plot(range(train_size, len(data)), ar_predictions, label="AR Predikciók", linestyle="dashed", color='red')
+plt.plot(range(train_size, len(data)), arma_predictions1, label="ARMA Predikciók 1", linestyle="dashed", color='green')
+plt.plot(range(train_size, len(data)), arma_predictions2, label="ARMA Predikciók 2", linestyle="dashed", color='black')
+plt.plot(range(train_size, len(data)), arma_predictions3, label="ARMA Predikciók 3", linestyle="dashed", color='purple')
+plt.plot(range(train_size, len(data)), arma_predictions3, label="ARIMA Predikció", linestyle="dashed", color='yellow')
+plt.legend()
+plt.title("Autoregressziós és ARMA modell - valós adat vs predikciók", fontsize=20)
+plt.show()

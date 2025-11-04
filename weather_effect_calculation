@@ -1,0 +1,214 @@
+import pandas as pd
+import numpy as np
+
+sao_paulo_weather = pd.read_csv(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\brazil_filtered_1963-2024 daily_avg_aggregated.csv")
+wather_lag_data = pd.read_csv(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\brazil_filtered_1963-2024 monthly_lags12.csv")
+price_data = pd.read_csv(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\Orange_Juice_Futures_Historical_Data_monthly_1973_2025.csv")
+sao_paulo_weather = sao_paulo_weather.drop(columns=["Unnamed: 0", "date2"])
+florida_weather = pd.read_csv(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\FL_Vero_Beach_1984-2024.10 weather.csv")
+
+#Fahrenheit átváltása celsius-ba
+florida_weather = florida_weather.rename(columns = {'PRCP':'prec', "TMAX": 'tmax', 'TMIN': 'tmin', 'DATE': 'date'})
+florida_weather['tmax'] = (florida_weather['tmax'] - 32)*5/9
+florida_weather['tmin'] = (florida_weather['tmin'] - 32)*5/9
+
+
+
+#Estimated orange crop data from previous chart
+years = np.arange(2000, 2025)
+orange_crop_values_sao_paolo = np.array([420, 400, 350, 370, 320, 340, 330, 350, 340, 300, 
+                               290, 380, 360, 310, 270, 300, 350, 250, 300, 320,
+                               280, 270, 290, 250, 230]) #, 230
+orange_crop_values_florida = np.array([233, 223, 230, 203, 242, 150, 148, 129, 170, 163, 134, 141, 147, 134, 105, 97, 82, 69, 45, 72, 67, 53, 41, 16]) #, 230
+
+brazil_orange_juice_production = np.array([
+    978000, 1354000, 1151000, 1482000, 1285000, 1440000, 1480000, 1315000, 1273000, 1145000,
+    1600000, 1263000, 980000, 1230000, 1006000, 859000, 1447000, 1004000, 1324000, 938000,
+    944000, 1135000, 1125000, 1012100
+])
+_crop_values_sao_paolo[:24], brazil_orange_juice_production[:24])[0, 1])
+
+
+
+# Filter data for the years 1991 to 2020
+sao_paulo_weather['date'] = pd.to_datetime(sao_paulo_weather['date'])
+sao_paulo_weather_filtered = sao_paulo_weather[(sao_paulo_weather['date'].dt.year >= 1991) & (sao_paulo_weather['date'].dt.year <= 2025)]
+
+
+florida_weather['date'] = pd.to_datetime(florida_weather['date'])
+florida_weather_filtered = florida_weather[(florida_weather['date'].dt.year >= 1991) & (florida_weather['date'].dt.year <= 2025)]
+
+
+#Szélsőséges időjárási esetek meghatározása
+sao_paulo_weather_filtered_heatwave_colspell = sao_paulo_weather_filtered.copy()
+
+sao_paulo_weather_filtered_heatwave_colspell['extreme_heat'] = (sao_paulo_weather_filtered['tmax'] > 35).astype(int)
+sao_paulo_weather_filtered_heatwave_colspell['extreme_cold'] = (sao_paulo_weather_filtered['tmin'] < 0).astype(int)
+sao_paulo_weather_filtered_heatwave_colspell['dry'] = (sao_paulo_weather_filtered['prec'] < 0.2).astype(int)  # Example threshold
+
+#Több napon át ható esemény - heatwave-coldspell-drought \hőség, fagy, szárazság
+sao_paulo_weather_filtered_heatwave_colspell['heatwave_streak'] = (
+    sao_paulo_weather_filtered_heatwave_colspell['extreme_heat'] * 
+    sao_paulo_weather_filtered_heatwave_colspell['extreme_heat'].groupby((sao_paulo_weather_filtered_heatwave_colspell['extreme_heat'] == 0).cumsum()).cumcount().add(1)
+)
+
+
+sao_paulo_weather_filtered_heatwave_colspell['coldspell_streak'] = (
+    sao_paulo_weather_filtered_heatwave_colspell['extreme_cold'] * 
+    sao_paulo_weather_filtered_heatwave_colspell['extreme_cold'].groupby((sao_paulo_weather_filtered_heatwave_colspell['extreme_cold'] == 0).cumsum()).cumcount().add(1)
+)
+
+
+sao_paulo_weather_filtered_heatwave_colspell['dry_streak'] = (
+    sao_paulo_weather_filtered_heatwave_colspell['dry'] * 
+    sao_paulo_weather_filtered_heatwave_colspell['dry'].groupby((sao_paulo_weather_filtered_heatwave_colspell['dry'] == 0).cumsum()).cumcount().add(1)
+)
+
+
+
+sao_paulo_weather_filtered_heatwave_colspell['heatwave'] = (sao_paulo_weather_filtered_heatwave_colspell['heatwave_streak'] >= 3).astype(int)
+sao_paulo_weather_filtered_heatwave_colspell['coldspell'] = (sao_paulo_weather_filtered_heatwave_colspell['coldspell_streak'] >= 3).astype(int)
+sao_paulo_weather_filtered_heatwave_colspell['drought'] = (sao_paulo_weather_filtered_heatwave_colspell['dry_streak'] >= 3).astype(int)
+
+
+
+sao_paulo_weather_filtered_heatwave_colspell['weighted_drought'] = sao_paulo_weather_filtered_heatwave_colspell['drought'] * np.exp(0.05 * sao_paulo_weather_filtered_heatwave_colspell['dry_streak']) 
+sao_paulo_weather_filtered_heatwave_colspell['weighted_heatwave'] = sao_paulo_weather_filtered_heatwave_colspell['heatwave'] * np.exp(0.2 * sao_paulo_weather_filtered_heatwave_colspell['heatwave_streak'])
+
+
+
+#----------------------------------------------
+
+def get_weather_crop_correlations(source_weather_data,source_weather_data_filtered, orange_crop_data, extreme_weather_streak):
+
+    monthly_avg = source_weather_data.groupby(source_weather_data_filtered['date'].dt.month)[
+        source_weather_data_filtered.select_dtypes(include='number').columns
+    ].mean().reset_index()
+
+   
+
+    month_map = {
+        'January': 1, 'February': 2, 'March': 3, 'April': 4,
+        'May': 5, 'June': 6, 'July': 7, 'August': 8,
+        'September': 9, 'October': 10, 'November': 11, 'December': 12
+    }
+
+    monthly_avg['month'] = monthly_avg['date'].map(month_map)
+
+
+    weather_data = source_weather_data[(source_weather_data['date'].dt.year >= 1997) & (source_weather_data['date'].dt.year < 2025)]
+    weather_data['month'] = weather_data['date'].dt.month
+    weather_data['year'] = weather_data['date'].dt.year
+
+    extreme_weather_streak['month'] = weather_data['date'].dt.month
+    extreme_weather_streak['year'] = weather_data['date'].dt.year
+
+    
+    extreme_weather_streak['seasonal_multiplier'] = 1  # Default to 1 (no extra weight)
+    extreme_weather_streak.loc[extreme_weather_streak['month'].isin([9, 10, 11]), 'seasonal_multiplier'] = 1  # Spring in Southern Hemisphere
+    extreme_weather_streak.loc[extreme_weather_streak['month'].isin([6, 7, 8]), 'seasonal_multiplier'] = 1  # Winter
+
+    extreme_weather_streak['weighted_heatwave'] = extreme_weather_streak['weighted_heatwave'] * extreme_weather_streak['seasonal_multiplier']
+    extreme_weather_streak['weighted_drought'] = extreme_weather_streak['weighted_drought'] * extreme_weather_streak['seasonal_multiplier']
+
+
+
+    weather_data_avg = weather_data.merge(monthly_avg[['date', 'prec', 'tmin', 'tmax']], 
+                                    left_on='month', 
+                                    right_on='date', 
+                                    suffixes=('', '_monthly_avg'))
+
+    weather_data_avg = weather_data_avg[weather_data_avg['prec'] != 0] #this is done because in earlier version there were no satellites in the are sometimes, therefore the fix did not include weather data. it is not much
+    
+
+    
+ 
+    weather_data_avg['prec_monthly_avg'] = weather_data_avg['prec_monthly_avg'] -7
+    weather_data_avg['tmin_monthly_avg'] = weather_data_avg['tmin_monthly_avg'] -5
+    weather_data_avg['tmax_monthly_avg'] = weather_data_avg['tmax_monthly_avg'] +5
+
+    below_avg_counts = (weather_data_avg['prec'] < weather_data_avg['prec_monthly_avg']).sum()
+
+    weather_extreme_counts = ((weather_data_avg['prec'] < weather_data_avg['prec_monthly_avg']) | (weather_data_avg['tmin'] < weather_data_avg['tmin_monthly_avg']) | (weather_data_avg['tmax'] > weather_data_avg['tmax_monthly_avg'])).sum()
+    print(f"Átlag alatti csapadékszámú napok: {below_avg_counts}, az összesen {len(weather_data)} napból")
+
+
+    
+    weather_data_avg['below_avg'] = (
+    (weather_data_avg['prec'] < weather_data_avg['prec_monthly_avg']) |
+    (weather_data_avg['tmin'] < weather_data_avg['tmin_monthly_avg']) |
+    (weather_data_avg['tmax'] > weather_data_avg['tmax_monthly_avg']) | weather_data_avg['prec'] < weather_data_avg['prec_monthly_avg']
+) 
+    below_avg_per_year = weather_data_avg.groupby('year')['below_avg'].sum().reset_index()
+    below_avg_per_month = weather_data_avg.groupby(['year', 'month'])['below_avg'].sum().reset_index()
+
+
+    low_prec_days = weather_data_avg[weather_data_avg['prec'] < weather_data_avg['prec_monthly_avg']][['date','prec','prec_monthly_avg']]
+  
+
+
+  
+    extreme_weather_streak_monthly = extreme_weather_streak.groupby(['year', 'month'])[['weighted_heatwave','weighted_drought', 'coldspell']].sum().reset_index()
+    extreme_weather_streak_monthly['total_extreme_streaks'] = (
+    extreme_weather_streak_monthly['weighted_heatwave'] +
+    extreme_weather_streak_monthly['coldspell'] +
+    extreme_weather_streak_monthly['weighted_drought']
+    )
+
+
+    yearly_extremes = extreme_weather_streak_monthly[['year','weighted_heatwave','weighted_drought', 'coldspell']].groupby('year').sum().reset_index()
+
+
+    yearly_extremes['total_extremes'] = (
+    yearly_extremes['weighted_heatwave'] +
+    yearly_extremes['coldspell'] +
+    yearly_extremes['weighted_drought']
+    )
+    
+
+    coldspell_annual = extreme_weather_streak.groupby('year')['coldspell_streak'].max().reset_index()
+    dry_annual = extreme_weather_streak.groupby('year')['weighted_drought'].max().reset_index()
+    heatwave_annual = extreme_weather_streak.groupby('year')['weighted_heatwave'].max().reset_index()
+
+
+    annual_weather_streak_summary = heatwave_annual.merge(coldspell_annual, on='year').merge(dry_annual, on='year')
+    
+   
+    annual_weather_streak_summary['total_extreme_streaks'] = (
+    annual_weather_streak_summary['weighted_heatwave'] +
+    annual_weather_streak_summary['coldspell_streak'] +
+    annual_weather_streak_summary['weighted_drought']
+)
+
+    correlation_drought = np.corrcoef(orange_crop_data[:25], annual_weather_streak_summary['weighted_drought'][:25].to_numpy())[0, 1]
+    correlation_heatwave = np.corrcoef(orange_crop_data[:25], annual_weather_streak_summary['weighted_heatwave'][:25].to_numpy())[0, 1]
+    correlation_total = np.corrcoef(orange_crop_data[:25], annual_weather_streak_summary['total_extreme_streaks'][:25].to_numpy())[0, 1]
+    print("CORRELATIOPN WEATHER NO RAIN STREAKS",correlation_drought)
+    print("CORRELATIOPN WEATHER HEATWAVE STREAKS",correlation_heatwave)
+    print("CORRELATIOPN WEATHER STREAKS",correlation_total)
+
+    extreme_weather_streak_monthly.to_excel(r"C:\Users\PC\OneDrive - elte.hu\szakdoga\data\annaul_monthly_extreme_weather_streaks(rain,temp).xlsx")
+    
+   
+    low_prec_days = weather_data_avg[weather_data_avg['prec'] < weather_data_avg['prec_monthly_avg']][['date','prec','prec_monthly_avg']]
+
+
+    # Identify extreme weather conditions
+    weather_data_avg['below_prec'] = weather_data_avg['prec'] < weather_data_avg['prec_monthly_avg']
+    weather_data_avg['below_tmin'] = weather_data_avg['tmin'] < weather_data_avg['tmin_monthly_avg'] 
+    weather_data_avg['above_tmax'] = weather_data_avg['tmax'] > weather_data_avg['tmax_monthly_avg'] 
+
+    # Combine these conditions into a single 'extreme_weather' flag
+    weather_data_avg['extreme_weather'] = (
+        weather_data_avg['below_prec'] |
+        weather_data_avg['below_tmin'] |
+        weather_data_avg['above_tmax']
+    )
+
+    extreme_weather_per_year = weather_data_avg.groupby('year')['extreme_weather'].sum().reset_index()
+
+
+get_weather_crop_correlations(sao_paulo_weather, sao_paulo_weather_filtered , orange_crop_values_sao_paolo,sao_paulo_weather_filtered_heatwave_colspell )
+
+
+
