@@ -1,0 +1,1 @@
+# szakdolgozat-2025
